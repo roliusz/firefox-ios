@@ -40,9 +40,6 @@ class SpotlightHelper: NSObject {
             activity.eligibleForSearch = true
         }
         self.activity = activity
-        //let keywords = activity.title?.componentsSeparatedByString(" ") ?? []
-        //            activity.keywords = Set(keywords)
-        //            activity.userInfo = ["Search" : ["Icecream" , "Nuts", "Biscuits"]]
         activity.becomeCurrent()
     }
 
