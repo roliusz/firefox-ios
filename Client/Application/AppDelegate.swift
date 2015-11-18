@@ -289,7 +289,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(application: UIApplication, continueUserActivity userActivity: NSUserActivity, restorationHandler: ([AnyObject]?) -> Void) -> Bool {
         if let url = userActivity.webpageURL {
-            browserViewController.openURLInNewTab(url)
+            browserViewController.switchToTabForURLOrOpen(url)
         }
         return true
     }

@@ -7,12 +7,13 @@ import Shared
 import WebKit
 
 
-let browsingActivityType: String = "org.mozilla.firefox.browsing"
+private let log = Logger.browserLogger
+private let browsingActivityType: String = "org.mozilla.firefox.browsing"
 
 class SpotlightHelper: NSObject {
     private(set) var activity: NSUserActivity? {
         willSet {
-            print("invalidating \(activity?.webpageURL)")
+            log.info("invalidating \(activity?.webpageURL)")
             activity?.invalidate()
         }
         didSet {
@@ -54,7 +55,7 @@ class SpotlightHelper: NSObject {
 
 extension SpotlightHelper: NSUserActivityDelegate {
     @objc func userActivityWasContinued(userActivity: NSUserActivity) {
-        print("userActivityWasContinued \(userActivity.webpageURL)")
+        log.info("userActivityWasContinued \(userActivity.webpageURL)")
         if let url = userActivity.webpageURL {
             createNewTab(url: url)
         }

@@ -863,6 +863,16 @@ class BrowserViewController: UIViewController {
         }
     }
 
+    func switchToTabForURLOrOpen(url: NSURL) {
+        if let tab = tabManager.getTabFor(url) {
+            log.info("Opening existing tab")
+            tabManager.selectTab(tab)
+        } else {
+            log.info("Opening new tab")
+            openURLInNewTab(url)
+        }
+    }
+
     func openURLInNewTab(url: NSURL) {
         let tab: Browser
         if #available(iOS 9, *) {
