@@ -50,15 +50,20 @@ class FaviconManager : BrowserHelper {
                             } else {
                                 return
                             }
-
                             browser.favicons.append(fav)
                             if !browser.isPrivate {
                                 self.profile.favicons.addFavicon(fav, forSite: site)
+                            } else if browser.favicons.isEmpty {
+                                self.makeFaviconAvailable(fav, withImage: img)
                             }
                         })
                     }
                 }
             }
         }
+    }
+
+    func makeFaviconAvailable(favicon: Favicon, withImage image: UIImage) {
+
     }
 }
