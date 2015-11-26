@@ -1231,7 +1231,8 @@ extension BrowserViewController: BrowserDelegate {
             log.info("Opening \(url)")
             self.tabManager.addTab(NSURLRequest(URL: url))
         }
-        browser.addHelper(SpotlightHelper(createNewTab: openURL), name: SpotlightHelper.name())
+        let spotlightHelper = SpotlightHelper(browser: browser, profile: profile, openURL: openURL)
+        browser.addHelper(spotlightHelper, name: SpotlightHelper.name())
     }
 
     func browser(browser: Browser, willDeleteWebView webView: WKWebView) {
@@ -1718,11 +1719,6 @@ extension BrowserViewController: WKNavigationDelegate {
         }
         info["isPrivate"] = tab.isPrivate
         notificationCenter.postNotificationName(NotificationOnLocationChange, object: self, userInfo: info)
-        if #available(iOS 9.0, *) {
-            let spotlightHelper = tab.getHelper(name: SpotlightHelper.name()) as! SpotlightHelper
-            spotlightHelper.updateIndexWith(info)
-        }
-
     }
 }
 

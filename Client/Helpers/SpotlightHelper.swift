@@ -4,6 +4,7 @@
 
 import Foundation
 import Shared
+import CoreSpotlight
 import WebKit
 
 
@@ -21,26 +22,57 @@ class SpotlightHelper: NSObject {
         }
     }
 
-    private let createNewTab: (url: NSURL) -> ()
+    private let createNewTab: ((url: NSURL) -> ())?
 
-    init (createNewTab openURL: (url: NSURL) -> ()) {
+    private let profile: Profile!
+    private weak var tab: Browser?
+
+    init(browser: Browser, profile: Profile, openURL: ((url: NSURL) -> ())? = nil) {
         createNewTab = openURL
+        self.profile = profile
+        self.tab = browser
+
+        if let path = NSBundle.mainBundle().pathForResource("SpotlightHelper", ofType: "js") {
+            if let source = try? NSString(contentsOfFile: path, encoding: NSUTF8StringEncoding) as String {
+                let userScript = WKUserScript(source: source, injectionTime: WKUserScriptInjectionTime.AtDocumentEnd, forMainFrameOnly: true)
+                browser.webView!.configuration.userContentController.addUserScript(userScript)
+            }
+        }
     }
 
     deinit {
         // Invalidate the currently held user activity (in willSet)
         // and release it.
-        activity = nil
+        self.activity = nil
     }
 
-    func updateIndexWith(notfication: [NSObject: AnyObject]) {
-        let activity = createUserActivity()
-        activity.title = notfication["title"] as? String
-        activity.webpageURL = notfication["url"] as? NSURL
-        if #available(iOS 9, *) {
-            activity.eligibleForSearch = true
+    func updateIndexWith(url: NSURL, notification: [String: String]) {
+        var activity: NSUserActivity
+        if let currentActivity = self.activity where currentActivity.webpageURL == url {
+            activity = currentActivity
+        } else {
+            activity = createUserActivity()
+            self.activity = activity
+            activity.webpageURL = url
         }
-        self.activity = activity
+
+        activity.title = notification["title"]
+        if #available(iOS 9, *) {
+            if !(tab?.isPrivate ?? true) {
+                let attrs = CSSearchableItemAttributeSet(itemContentType: kUTTypeHTML as String)
+                attrs.contentDescription = notification["description"]
+
+                if let favicons = tab?.favicons where !favicons.isEmpty {
+                    print("Thumbnail!! \(favicons[0].url)")
+                    attrs.thumbnailURL = NSURL(string: favicons[0].url)
+                } else {
+                    print("No thumbnail available for \(url.absoluteString)")
+                }
+                attrs.contentURL = url
+                activity.contentAttributeSet = attrs
+                activity.eligibleForSearch = true
+            }
+        }
         activity.becomeCurrent()
     }
 
@@ -57,7 +89,7 @@ extension SpotlightHelper: NSUserActivityDelegate {
     @objc func userActivityWasContinued(userActivity: NSUserActivity) {
         log.info("userActivityWasContinued \(userActivity.webpageURL)")
         if let url = userActivity.webpageURL {
-            createNewTab(url: url)
+            createNewTab?(url: url)
         }
     }
 }
@@ -68,10 +100,14 @@ extension SpotlightHelper: BrowserHelper {
     }
 
     func scriptMessageHandlerName() -> String? {
-        return nil
+        return "spotlightMessageHandler"
     }
 
     func userContentController(userContentController: WKUserContentController, didReceiveScriptMessage message: WKScriptMessage) {
-        // As yet unused.
+        if let tab = self.tab,
+            let url = tab.url,
+            let payload = message.body as? [String: String] {
+                updateIndexWith(url, notification: payload)
+        }
     }
 }
