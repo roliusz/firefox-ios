@@ -218,7 +218,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             if let shortcut = quickActions.launchedShortcutItem {
                 // dispatch asynchronously so that BVC is all set up for handling new tabs
                 // when we try and open them
-                quickActions.handleShortCutItem(shortcut, completionBlock: self.handleShortCutItemType)
+                quickActions.handleShortCutItem(shortcut, withBrowserViewController: browserViewController)
                 quickActions.launchedShortcutItem = nil
             }
         }
@@ -322,6 +322,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if let alertURL = notification.userInfo?[TabSendURLKey] as? String {
             if let urlToOpen = NSURL(string: alertURL) {
                 browserViewController.openURLInNewTab(urlToOpen)
+
+                if #available(iOS 9, *) {
+                    var userData = [QuickActions.TabURLKey: alertURL]
+                    if let title = notification.userInfo?[TabSendTitleKey] as? String {
+                        userData[QuickActions.TabTitleKey] = title
+                    }
+                    QuickActions.sharedInstance.addDynamicApplicationShortcutItemOfType(.OpenLastTab, withUserData: userData, toApplication: UIApplication.sharedApplication())
+                }
             }
         }
     }
@@ -330,6 +338,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if let alertURL = notification.userInfo?[TabSendURLKey] as? String,
             let title = notification.userInfo?[TabSendTitleKey] as? String {
                 browserViewController.addBookmark(alertURL, title: title)
+
+                if #available(iOS 9, *) {
+                    let userData = [QuickActions.TabURLKey: alertURL,
+                        QuickActions.TabTitleKey: title]
+                    QuickActions.sharedInstance.addDynamicApplicationShortcutItemOfType(.OpenLastBookmark, withUserData: userData, toApplication: UIApplication.sharedApplication())
+                }
         }
     }
 
@@ -344,37 +358,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     @available(iOS 9.0, *)
     func application(application: UIApplication, performActionForShortcutItem shortcutItem: UIApplicationShortcutItem, completionHandler: Bool -> Void) {
-        let handledShortCutItem = QuickActions.sharedInstance.handleShortCutItem(shortcutItem, completionBlock: handleShortCutItemType)
+        let handledShortCutItem = QuickActions.sharedInstance.handleShortCutItem(shortcutItem, withBrowserViewController: browserViewController)
 
         completionHandler(handledShortCutItem)
-    }
-
-    @available(iOS 9, *)
-    func handleShortCutItemType(type: ShortcutType, userData: [String : NSSecureCoding]?) {
-        switch(type) {
-        case .NewTab:
-            browserViewController.applyNormalModeTheme(force: true)
-            browserViewController.openBlankNewTabAndFocus()
-        case .NewPrivateTab:
-            browserViewController.applyPrivateModeTheme(force: true)
-            browserViewController.openBlankNewTabAndFocus(isPrivate: true)
-        case .OpenLastBookmark:
-            // open bookmark in a non-private browsing tab
-            browserViewController.applyNormalModeTheme(force: true)
-            // find out if bookmarked URL is currently open
-            // if so, open to that tab,
-            // otherwise, create a new tab with the bookmarked URL
-            if let urlString = userData?["bookmarkURL"] as? String,
-                let urlToOpen = NSURL(string: urlString) {
-                let index = browserViewController.tabManager.tabs.indexOf { $0.url == urlToOpen }
-                if let index = index {
-                   let bookmarkTab = browserViewController.tabManager.tabs[index]
-                    browserViewController.tabManager.selectTab(bookmarkTab)
-                } else {
-                    browserViewController.openURLInNewTab(urlToOpen)
-                }
-            }
-        }
     }
 }
 
