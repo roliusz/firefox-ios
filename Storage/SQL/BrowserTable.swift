@@ -143,27 +143,44 @@ public class BrowserTable: Table {
 
     func prepopulateRootFolders(db: SQLiteDBConnection) -> Bool {
         let type = BookmarkNodeType.Folder.rawValue
-        let root = BookmarkRoots.RootID
 
-        // TODO: what's the title of the places root?
-        let args: Args = [
-            root, BookmarkRoots.RootGUID, type, "Root", BookmarkRoots.RootGUID, "Root",
-            BookmarkRoots.MobileID, BookmarkRoots.MobileFolderGUID, type, BookmarksFolderTitleMobile, BookmarkRoots.RootGUID, "Root",
-            BookmarkRoots.MenuID, BookmarkRoots.MenuFolderGUID, type, BookmarksFolderTitleMenu, BookmarkRoots.RootGUID, "Root",
-            BookmarkRoots.ToolbarID, BookmarkRoots.ToolbarFolderGUID, type, BookmarksFolderTitleToolbar, BookmarkRoots.RootGUID, "Root",
-            BookmarkRoots.UnfiledID, BookmarkRoots.UnfiledFolderGUID, type, BookmarksFolderTitleUnsorted, BookmarkRoots.RootGUID, "Root",
+        let localArgs: Args = [
+            BookmarkRoots.RootID,    BookmarkRoots.RootGUID,          type, BookmarkRoots.RootGUID,
+            BookmarkRoots.MobileID,  BookmarkRoots.MobileFolderGUID,  type, BookmarkRoots.RootGUID,
+            BookmarkRoots.MenuID,    BookmarkRoots.MenuFolderGUID,    type, BookmarkRoots.RootGUID,
+            BookmarkRoots.ToolbarID, BookmarkRoots.ToolbarFolderGUID, type, BookmarkRoots.RootGUID,
+            BookmarkRoots.UnfiledID, BookmarkRoots.UnfiledFolderGUID, type, BookmarkRoots.RootGUID,
         ]
 
-        // TODO: local structure for roots.
-        let sql =
-        "INSERT INTO bookmarksLocal (id, guid, type, title, parentid, parentName) VALUES " +
-            "(?, ?, ?, ?, ?, ?), " +    // Root
-            "(?, ?, ?, ?, ?, ?), " +    // Mobile
-            "(?, ?, ?, ?, ?, ?), " +    // Menu
-            "(?, ?, ?, ?, ?, ?), " +    // Toolbar
-            "(?, ?, ?, ?, ?, ?)  "      // Unsorted
+        let structureArgs: Args = [
+            BookmarkRoots.RootGUID, BookmarkRoots.MobileFolderGUID,  0,
+            BookmarkRoots.RootGUID, BookmarkRoots.MenuFolderGUID,    1,
+            BookmarkRoots.RootGUID, BookmarkRoots.ToolbarFolderGUID, 2,
+            BookmarkRoots.RootGUID, BookmarkRoots.UnfiledFolderGUID, 3,
+        ]
 
-        return self.run(db, sql: sql, args: args)
+        // Note that we specify no title and no parentName for these records. We should
+        // never need a parentName -- we don't use content-based reconciling or
+        // reparent these -- and we'll use the current locale's string, retrieved
+        // via titleForSpecialGUID, if necessary.
+
+        let local =
+        "INSERT INTO \(TableBookmarksLocal) " +
+        "(id, guid, type, parentid, title, parentName) VALUES" +
+        "  (?, ?, ?, ?, NULL, NULL)" +    // Root
+        ", (?, ?, ?, ?, NULL, NULL)" +    // Mobile
+        ", (?, ?, ?, ?, NULL, NULL)" +    // Menu
+        ", (?, ?, ?, ?, NULL, NULL)" +    // Toolbar
+        ", (?, ?, ?, ?, NULL, NULL)"      // Unsorted
+
+        let structure =
+        "INSERT INTO \(TableBookmarksLocalStructure) (parent, child, idx) VALUES" +
+        "  (?, ?, ?)" +      // Mobile
+        ", (?, ?, ?)" +      // Menu
+        ", (?, ?, ?)" +      // Toolbar
+        ", (?, ?, ?)"        // Unsorted
+
+        return self.run(db, queries: [(local, localArgs), (structure, structureArgs)])
     }
 
     let topSitesTableCreate =
