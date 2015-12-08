@@ -863,6 +863,7 @@ extension MergedSQLiteBookmarks: ResettableSyncStorage {
 
 extension SQLiteBookmarks: AccountRemovalDelegate {
     public func onRemovedAccount() -> Success {
+        // TODO
         log.debug("SQLiteBookmarks doesn't yet store any data that needs to be discarded on account removal.")
         return succeed()
     }
@@ -870,6 +871,7 @@ extension SQLiteBookmarks: AccountRemovalDelegate {
 
 extension SQLiteBookmarks: ResettableSyncStorage {
     public func resetClient() -> Success {
+        // TODO
         log.debug("SQLiteBookmarks doesn't yet store any data that needs to be reset.")
         return succeed()
     }
