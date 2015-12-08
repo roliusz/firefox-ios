@@ -26,7 +26,7 @@ class TestSQLiteBookmarks: XCTestCase {
         } catch {}
 
         do {
-            try self.files.remove("TSQLBtestMirrorStorage.db")
+            try self.files.remove("TSQLBtestBufferStorage.db")
         } catch {}
 
         super.tearDown()
@@ -49,19 +49,15 @@ class TestSQLiteBookmarks: XCTestCase {
         XCTAssertTrue(bookmarks.removeByURL("").value.isSuccess)
     }
 
-    func testMirrorStorage() {
-        guard let db = getBrowserDB("TSQLBtestMirrorStorage.db", files: self.files) else {
+    /*
+    // This is dead test code after we eliminated the merged view.
+    // Expect this to be ported to reflect post-sync state.
+    func testBookmarkStructure() {
+        guard let db = getBrowserDB("TSQLBtestBufferStorage.db", files: self.files) else {
             XCTFail("Unable to create browser DB.")
             return
         }
-        let bookmarks = SQLiteBookmarkMirrorStorage(db: db)
-
-        let record1 = BookmarkMirrorItem.bookmark("aaaaaaaaaaaa", modified: NSDate.now(), hasDupe: false, parentID: BookmarkRoots.ToolbarFolderGUID, parentName: "Bookmarks Toolbar", title: "AAA", description: "AAA desc", URI: "http://getfirefox.com", tags: "[]", keyword: nil)
-        let record2 = BookmarkMirrorItem.bookmark("bbbbbbbbbbbb", modified: NSDate.now() + 10, hasDupe: false, parentID: BookmarkRoots.ToolbarFolderGUID, parentName: "Bookmarks Toolbar", title: "BBB", description: "BBB desc", URI: "http://getfirefox.com", tags: "[]", keyword: nil)
-        let toolbar = BookmarkMirrorItem.folder("toolbar", modified: NSDate.now(), hasDupe: false, parentID: "places", parentName: "", title: "Bookmarks Toolbar", description: "Add bookmarks to this folder to see them displayed on the Bookmarks Toolbar", children: ["aaaaaaaaaaaa", "bbbbbbbbbbbb"])
-        let recordsA: [BookmarkMirrorItem] = [record1, toolbar, record2]
-        let applyA = bookmarks.applyRecords(recordsA, withMaxVars: 3).value
-        XCTAssertTrue(applyA.isSuccess)
+        let bookmarks = MergedSQLiteBookmarks(db: db)
 
         guard let model = bookmarks.modelForRoot().value.successValue else {
             XCTFail("Unable to get root.")
@@ -118,6 +114,23 @@ class TestSQLiteBookmarks: XCTestCase {
         }
         XCTAssertEqual(newToolbar.current.count, 1)
         XCTAssertEqual(newToolbar.current[0]?.guid, "bbbbbbbbbbbb")
+    }
+    */
+
+    func testBufferStorage() {
+        guard let db = getBrowserDB("TSQLBtestBufferStorage.db", files: self.files) else {
+            XCTFail("Unable to create browser DB.")
+            return
+        }
+        let bookmarks = SQLiteBookmarkBufferStorage(db: db)
+
+        let record1 = BookmarkMirrorItem.bookmark("aaaaaaaaaaaa", modified: NSDate.now(), hasDupe: false, parentID: BookmarkRoots.ToolbarFolderGUID, parentName: "Bookmarks Toolbar", title: "AAA", description: "AAA desc", URI: "http://getfirefox.com", tags: "[]", keyword: nil)
+        let record2 = BookmarkMirrorItem.bookmark("bbbbbbbbbbbb", modified: NSDate.now() + 10, hasDupe: false, parentID: BookmarkRoots.ToolbarFolderGUID, parentName: "Bookmarks Toolbar", title: "BBB", description: "BBB desc", URI: "http://getfirefox.com", tags: "[]", keyword: nil)
+        let toolbar = BookmarkMirrorItem.folder("toolbar", modified: NSDate.now(), hasDupe: false, parentID: "places", parentName: "", title: "Bookmarks Toolbar", description: "Add bookmarks to this folder to see them displayed on the Bookmarks Toolbar", children: ["aaaaaaaaaaaa", "bbbbbbbbbbbb"])
+        let recordsA: [BookmarkMirrorItem] = [record1, toolbar, record2]
+        let applyA = bookmarks.applyRecords(recordsA, withMaxVars: 3).value
+        XCTAssertTrue(applyA.isSuccess)
+
 
         // Insert mobile bookmarks as produced by Firefox 40-something on desktop.
 
@@ -130,7 +143,7 @@ class TestSQLiteBookmarks: XCTestCase {
         XCTAssertTrue(applyM.isSuccess)
 
         func childCount(parent: GUID) -> Int? {
-            let sql = "SELECT COUNT(*) AS childCount FROM \(TableBookmarksMirrorStructure) WHERE parent = ?"
+            let sql = "SELECT COUNT(*) AS childCount FROM \(TableBookmarksBufferStructure) WHERE parent = ?"
             let args: Args = [parent]
             return db.runQuery(sql, args: args, factory: { $0["childCount"] as! Int }).value.successValue?[0]
         }
