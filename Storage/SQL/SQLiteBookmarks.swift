@@ -328,29 +328,32 @@ public class SQLiteBookmarks: BookmarksModelFactory {
 }
 
 extension SQLiteBookmarks {
-    // Sorry about the long line. If we break it, the indenting below gets crazy.
-    private func insertBookmarkInTransaction(deferred: Success, url: NSURL, title: String, favicon: Favicon?, intoFolder parent: GUID, withTitle parentTitle: String)(conn: SQLiteDBConnection, inout err: NSError?) -> Bool {
+    /**
+     * Insert a bookmark into the specified folder.
+     * If the folder doesn't exist, or is deleted, insertion will fail.
+     *
+     * Preconditions:
+     * * `deferred` has not been filled.
+     * * this function is called inside a transaction that hasn't been finished.
+     *
+     * Postconditions:
+     * * `deferred` has been filled with success or failure.
+     * * the transaction will include any status/overlay changes necessary to save the bookmark.
+     * * the return value determines whether the transaction should be committed, and
+     *   matches the success-ness of the Deferred.
+     *
+     * Sorry about the long line. If we break it, the indenting below gets crazy.
+     */
+    func insertBookmarkInTransaction(deferred: Success, url: NSURL, title: String, favicon: Favicon?, intoFolder parent: GUID, withTitle parentTitle: String)(conn: SQLiteDBConnection, inout err: NSError?) -> Bool {
 
         log.debug("Begun bookmark transaction on thread \(NSThread.currentThread())")
-
-        func intFactory(col: String) -> SDRow -> Int {
-            return { ($0[col] as! Int) }
-        }
-
-        func boolFactory(col: String) -> SDRow -> Bool {
-            return { 0 != ($0[col] as! Int) }
-        }
-
-        func fail(err: NSError?) {
-            deferred.fillIfUnfilled(Maybe(failure: DatabaseError(err: err)))
-        }
 
         // Keep going if this returns true.
         func change(sql: String, args: Args?, desc: String) -> Bool {
             err = conn.executeChange(sql, withArgs: args)
             if let err = err {
                 log.error(desc)
-                fail(err)
+                deferred.fillIfUnfilled(Maybe(failure: DatabaseError(err: err)))
                 return false
             }
             return true
@@ -358,6 +361,11 @@ extension SQLiteBookmarks {
 
         let urlString = url.absoluteString
         let newGUID = Bytes.generateGUID()
+        let now = NSDate.now()
+        let changed = SyncStatus.Changed.rawValue
+        let parentArgs: Args = [parent]
+
+        //// Insert the new bookmark and icon without touching structure.
         var args: Args = [
             newGUID,
             BookmarkNodeType.Bookmark.rawValue,
@@ -398,95 +406,118 @@ extension SQLiteBookmarks {
             return false
         }
 
-        // Now add to the structure table.
-        // See discussion here: <https://github.com/mozilla/firefox-ios/commit/2041f1bbde430de29aefb803aae54ed26db47d23#commitcomment-14572312>
-        // Note that this isn't as obvious as you might think. We must:
-
-        // * Figure out if we were already overridden. We only want to re-clone
-        //   if we weren't.
-
-        let now = NSDate.now()
-        let changed = SyncStatus.Changed.rawValue
-        let parentArgs: Args = [parent]
-
-        func bumpParentStatus() -> Bool {
-            let bumpSQL = "UPDATE \(TableBookmarksLocal) SET sync_status = \(changed), local_modified = \(now) WHERE guid = ?"
+        let bumpParentStatus = { (status: Int) -> Bool in
+            let bumpSQL = "UPDATE \(TableBookmarksLocal) SET sync_status = \(status), local_modified = \(now) WHERE guid = ?"
             return change(bumpSQL, args: parentArgs, desc: "Error bumping \(parent)'s modified time.")
         }
 
-        let parentSQL = "SELECT is_overridden FROM \(TableBookmarksMirror) WHERE guid = ?"
-        let mirrorStatus = conn.executeQuery(parentSQL, factory: boolFactory("is_overridden"), withArgs: parentArgs)
-        let existsInMirror = mirrorStatus[0] != nil
-
-        if !existsInMirror {
-            // Either the user doesn't use Sync, or we aren't in sync yet,
-            // and thus the mirror doesn't contain the target folder.
-            // Let's make sure the local folder exists!
-            let localStatusSQL = "SELECT sync_status FROM \(TableBookmarksLocal) WHERE guid = ?"
-            guard let status = conn.executeQuery(localStatusSQL, factory: intFactory("sync_status"), withArgs: parentArgs)[0] else {
-                log.error("Inserting into non-existent local folder \(parent). Aborting.")
-                deferred.fillIfUnfilled(Maybe(failure: DatabaseError(description: "Local folder \(parent) doesn't exist.")))
+        let overrideParentMirror = { () -> Bool in
+            // Copy it to the local table.
+            // Most of these will be NULL, because we're only dealing with folders,
+            // and in this case only the Mobile Bookmarks root.
+            let overrideSQL = "INSERT OR IGNORE INTO \(TableBookmarksLocal) " +
+                              "(guid, type, bmkUri, title, parentid, parentName, feedUri, siteUri, pos," +
+                              " description, tags, keyword, folderName, queryId, local_modified, sync_status, faviconID) " +
+                              "SELECT guid, type, bmkUri, title, parentid, parentName, " +
+                              "feedUri, siteUri, pos, description, tags, keyword, folderName, queryId, " +
+                              "\(now) AS local_modified, \(changed) AS sync_status, faviconID " +
+                              "FROM \(TableBookmarksMirror) WHERE guid = ?"
+            if !change(overrideSQL, args: parentArgs, desc: "Error overriding \(parent).") {
                 return false
             }
-            let syncStatus = SyncStatus(rawValue: status)
-            if .Synced == (syncStatus ?? .Synced) {
-                log.warning("Local folder marked Synced or unknown state \(status). This should never occur.")
-                if !bumpParentStatus() {
-                    return false
-                }
-            } else {
-                log.debug("Local folder \(parent) already exists and is marked as New or Changed.")
-            }
-        } else {
-            let isOverridden = mirrorStatus[0] ?? false
 
+            // Copy its mirror structure.
+            let dropSQL = "DELETE FROM \(TableBookmarksLocalStructure) WHERE parent = ?"
+            if !change(dropSQL, args: parentArgs, desc: "Error dropping old local structure.") {
+                return false
+            }
+
+            let copySQL = "INSERT INTO \(TableBookmarksLocalStructure) " +
+                          "SELECT * FROM \(TableBookmarksMirrorStructure) WHERE parent = ?"
+            if !change(copySQL, args: parentArgs, desc: "Error copying mirror structure.") {
+                return false
+            }
+
+            // Mark as overridden.
+            let markSQL = "UPDATE \(TableBookmarksMirror) SET is_overridden = 1 WHERE guid = ?"
+            if !change(markSQL, args: parentArgs, desc: "Error marking \(parent) as overridden.") {
+                return false
+            }
+
+            return true
+        }
+
+        //// Make sure our parent is overridden and appropriately bumped.
+        // See discussion here: <https://github.com/mozilla/firefox-ios/commit/2041f1bbde430de29aefb803aae54ed26db47d23#commitcomment-14572312>
+        // Note that this isn't as obvious as you might think. We must:
+        let localStatusFactory: SDRow -> (Int, Bool) = { row in
+            let status = row["sync_status"] as! Int
+            let deleted = (row["is_deleted"] as! Int) != 0
+            return (status, deleted)
+        }
+
+        let overriddenFactory: SDRow -> Bool = { row in
+            row.getBoolean("is_overridden")
+        }
+
+        // TODO: these can be merged into a single query.
+        let mirrorStatusSQL = "SELECT is_overridden FROM \(TableBookmarksMirror) WHERE guid = ?"
+        let localStatusSQL = "SELECT sync_status, is_deleted FROM \(TableBookmarksLocal) WHERE guid = ?"
+        let mirrorStatus = conn.executeQuery(mirrorStatusSQL, factory: overriddenFactory, withArgs: parentArgs)[0]
+        let localStatus = conn.executeQuery(localStatusSQL, factory: localStatusFactory, withArgs: parentArgs)[0]
+
+        let parentExistsInMirror = mirrorStatus != nil
+        let parentExistsLocally = localStatus != nil
+
+        // * Figure out if we were already overridden. We only want to re-clone
+        //   if we weren't.
+        if !parentExistsLocally {
+            if !parentExistsInMirror {
+                deferred.fillIfUnfilled(Maybe(failure: DatabaseError(description: "Folder \(parent) doesn't exist in either mirror or local.")))
+                return false
+            }
             // * Mark the parent folder as overridden if necessary.
             //   Overriding the parent involves copying the parent's structure, so that
             //   we can amend it, but also the parent's row itself so that we know it's
             //   changed.
-            if isOverridden {
-                // Bump the overridden parent's modified time. We already copied its
-                // structure and values.
-                if !bumpParentStatus() {
-                    return false
+            overrideParentMirror()
+        } else {
+            let (status, deleted) = localStatus!
+            if deleted {
+                log.error("Trying to insert into deleted local folder.")
+                deferred.fillIfUnfilled(Maybe(failure: DatabaseError(description: "Local folder \(parent) is deleted.")))
+                return false
+            }
+
+            // * Bump the overridden parent's modified time. We already copied its
+            //   structure and values, and if it's in the local table it'll either
+            //   already be New or Changed.
+
+            if let syncStatus = SyncStatus(rawValue: status) {
+                switch syncStatus {
+                case .Synced:
+                    log.debug("We don't expect folders to ever be marked as Synced.")
+                    if !bumpParentStatus(SyncStatus.Changed.rawValue) {
+                        return false
+                    }
+                case .New:
+                    fallthrough
+                case .Changed:
+                    // Leave it marked as new or changed, but bump the timestamp.
+                    if !bumpParentStatus(syncStatus.rawValue) {
+                        return false
+                    }
                 }
             } else {
-                // Copy it to the local table.
-                // Most of these will be NULL, because we're only dealing with folders,
-                // and in this case only the Mobile Bookmarks root.
-                let overrideSQL = "INSERT OR IGNORE INTO \(TableBookmarksLocal) " +
-                                  "(guid, type, bmkUri, title, parentid, parentName, feedUri, siteUri, pos," +
-                                  " description, tags, keyword, folderName, queryId, local_modified, sync_status, faviconID) " +
-                                  "SELECT guid, type, bmkUri, title, parentid, parentName, " +
-                                  "feedUri, siteUri, pos, description, tags, keyword, folderName, queryId, " +
-                                  "\(now) AS local_modified, \(changed) AS sync_status, faviconID " +
-                                  "FROM \(TableBookmarksMirror) WHERE guid = ?"
-                if !change(overrideSQL, args: parentArgs, desc: "Error overriding \(parent).") {
-                    return false
-                }
-
-                // Copy its mirror structure.
-                let dropSQL = "DELETE FROM \(TableBookmarksLocalStructure) WHERE parent = ?"
-                if !change(dropSQL, args: parentArgs, desc: "Error dropping old local structure.") {
-                    return false
-                }
-
-                let copySQL = "INSERT INTO \(TableBookmarksLocalStructure) " +
-                              "SELECT * FROM \(TableBookmarksMirrorStructure) WHERE parent = ?"
-                if !change(copySQL, args: parentArgs, desc: "Error copying mirror structure.") {
-                    return false
-                }
-
-                // Mark as overridden.
-                let markSQL = "UPDATE \(TableBookmarksMirror) SET is_overridden = 1 WHERE guid = ?"
-                if !change(markSQL, args: parentArgs, desc: "Error marking \(parent) as overridden.") {
+                log.warning("Local folder marked with unknown state \(status). This should never occur.")
+                if !bumpParentStatus(SyncStatus.Changed.rawValue) {
                     return false
                 }
             }
         }
 
-        // * Add the new bookmark as a child in the modified local structure.
-        //   We always append the new row: after insertion, the new item will have the largest index.
+        /// Add the new bookmark as a child in the modified local structure.
+        // We always append the new row: after insertion, the new item will have the largest index.
         let newIndex = "(SELECT (COALESCE(MAX(idx), 0) + 1) AS newIndex FROM \(TableBookmarksLocalStructure) WHERE parent = ?)"
         let structureSQL = "INSERT INTO \(TableBookmarksLocalStructure) (parent, child, idx) " +
                            "VALUES (?, ?, \(newIndex))"
@@ -497,6 +528,8 @@ extension SQLiteBookmarks {
             return false
         }
 
+
+        /// Fill the deferred and commit the transaction.
         deferred.fill(Maybe(success: ()))
         return true
     }
