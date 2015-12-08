@@ -259,10 +259,11 @@ public class SQLiteBookmarks: BookmarksModelFactory {
     }
 
     public func modelForRoot() -> Deferred<Maybe<BookmarksModel>> {
-        return self.getRootChildren()
-            >>== { cursor in
-                let folder = SQLiteBookmarkFolder(guid: BookmarkRoots.RootGUID, title: "Root", children: cursor)
-                return deferMaybe(BookmarksModel(modelFactory: self, root: folder))
+        log.debug("Getting model for root.")
+        // Return a virtual model containing "Desktop bookmarks" prepended to the local mobile bookmarks.
+        return self.folderForGUID(BookmarkRoots.MobileFolderGUID, title: BookmarksFolderTitleMobile)
+            >>== { folder in
+                return self.extendWithDesktopBookmarksFolder(folder, factory: self)
         }
     }
 
