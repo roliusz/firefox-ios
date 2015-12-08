@@ -143,20 +143,22 @@ public class BrowserTable: Table {
 
     func prepopulateRootFolders(db: SQLiteDBConnection) -> Bool {
         let type = BookmarkNodeType.Folder.rawValue
+        let now = NSDate.nowNumber()
+        let status = SyncStatus.New.rawValue
 
         let localArgs: Args = [
-            BookmarkRoots.RootID,    BookmarkRoots.RootGUID,          type, BookmarkRoots.RootGUID,
-            BookmarkRoots.MobileID,  BookmarkRoots.MobileFolderGUID,  type, BookmarkRoots.RootGUID,
-            BookmarkRoots.MenuID,    BookmarkRoots.MenuFolderGUID,    type, BookmarkRoots.RootGUID,
-            BookmarkRoots.ToolbarID, BookmarkRoots.ToolbarFolderGUID, type, BookmarkRoots.RootGUID,
-            BookmarkRoots.UnfiledID, BookmarkRoots.UnfiledFolderGUID, type, BookmarkRoots.RootGUID,
+            BookmarkRoots.RootID,    BookmarkRoots.RootGUID,          type, BookmarkRoots.RootGUID, status, now,
+            BookmarkRoots.MobileID,  BookmarkRoots.MobileFolderGUID,  type, BookmarkRoots.RootGUID, status, now,
+            BookmarkRoots.MenuID,    BookmarkRoots.MenuFolderGUID,    type, BookmarkRoots.RootGUID, status, now,
+            BookmarkRoots.ToolbarID, BookmarkRoots.ToolbarFolderGUID, type, BookmarkRoots.RootGUID, status, now,
+            BookmarkRoots.UnfiledID, BookmarkRoots.UnfiledFolderGUID, type, BookmarkRoots.RootGUID, status, now,
         ]
 
         let structureArgs: Args = [
-            BookmarkRoots.RootGUID, BookmarkRoots.MobileFolderGUID,  0,
-            BookmarkRoots.RootGUID, BookmarkRoots.MenuFolderGUID,    1,
-            BookmarkRoots.RootGUID, BookmarkRoots.ToolbarFolderGUID, 2,
-            BookmarkRoots.RootGUID, BookmarkRoots.UnfiledFolderGUID, 3,
+            BookmarkRoots.RootGUID, BookmarkRoots.MenuFolderGUID,    0,
+            BookmarkRoots.RootGUID, BookmarkRoots.ToolbarFolderGUID, 1,
+            BookmarkRoots.RootGUID, BookmarkRoots.UnfiledFolderGUID, 2,
+            BookmarkRoots.RootGUID, BookmarkRoots.MobileFolderGUID,  3,
         ]
 
         // Note that we specify an empty title and parentName for these records. We should
@@ -166,19 +168,19 @@ public class BrowserTable: Table {
 
         let local =
         "INSERT INTO \(TableBookmarksLocal) " +
-        "(id, guid, type, parentid, title, parentName) VALUES" +
-        "  (?, ?, ?, ?, '', '')" +    // Root
-        ", (?, ?, ?, ?, '', '')" +    // Mobile
-        ", (?, ?, ?, ?, '', '')" +    // Menu
-        ", (?, ?, ?, ?, '', '')" +    // Toolbar
-        ", (?, ?, ?, ?, '', '')"      // Unsorted
+        "(id, guid, type, parentid, title, parentName, sync_status, local_modified) VALUES" +
+        "  (?, ?, ?, ?, '', '', ?, ?)" +    // Root
+        ", (?, ?, ?, ?, '', '', ?, ?)" +    // Mobile
+        ", (?, ?, ?, ?, '', '', ?, ?)" +    // Menu
+        ", (?, ?, ?, ?, '', '', ?, ?)" +    // Toolbar
+        ", (?, ?, ?, ?, '', '', ?, ?)"      // Unsorted
 
         let structure =
         "INSERT INTO \(TableBookmarksLocalStructure) (parent, child, idx) VALUES" +
-        "  (?, ?, ?)" +      // Mobile
-        ", (?, ?, ?)" +      // Menu
+        "  (?, ?, ?)" +      // Menu
         ", (?, ?, ?)" +      // Toolbar
-        ", (?, ?, ?)"        // Unsorted
+        ", (?, ?, ?)" +      // Unsorted
+        ", (?, ?, ?)"        // Mobile
 
         return self.run(db, queries: [(local, localArgs), (structure, structureArgs)])
     }
