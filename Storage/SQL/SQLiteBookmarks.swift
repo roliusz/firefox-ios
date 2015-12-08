@@ -805,31 +805,19 @@ extension MergedSQLiteBookmarks: ShareToDestination {
 
 extension MergedSQLiteBookmarks: BookmarksModelFactory {
     public func modelForFolder(folder: BookmarkFolder) -> Deferred<Maybe<BookmarksModel>> {
-        if folder.guid == BookmarkRoots.MobileFolderGUID {
-            return self.modelForRoot()
-        }
-
         return self.local.modelForFolder(folder)
     }
 
     public func modelForFolder(guid: String) -> Deferred<Maybe<BookmarksModel>> {
-        return self.modelForFolder(guid, title: "")
+        return self.local.modelForFolder(guid)
     }
 
     public func modelForFolder(guid: String, title: String) -> Deferred<Maybe<BookmarksModel>> {
-        if guid == BookmarkRoots.MobileFolderGUID {
-            return self.modelForRoot()
-        }
-
         return self.local.modelForFolder(guid, title: title)
     }
 
     public func modelForRoot() -> Deferred<Maybe<BookmarksModel>> {
-        // Return a virtual model containing "Desktop bookmarks" prepended to the local mobile bookmarks.
-        return self.local.folderForGUID(BookmarkRoots.MobileFolderGUID, title: BookmarksFolderTitleMobile)
-            >>== { folder in
-                return self.local.extendWithDesktopBookmarksFolder(folder, factory: self)
-        }
+        return self.local.modelForRoot()
     }
 
     // Whenever async construction is necessary, we fall into a pattern of needing
@@ -839,7 +827,6 @@ extension MergedSQLiteBookmarks: BookmarksModelFactory {
     }
 
     // TODO: we really want to know 'isRemovable', too.
-    // For now we simply treat remote URLs as non-bookmarked.
     public func isBookmarked(url: String) -> Deferred<Maybe<Bool>> {
         return self.local.isBookmarked(url)
     }
