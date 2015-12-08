@@ -810,14 +810,6 @@ extension SQLiteBookmarks {
     }
 }
 
-extension SQLiteBookmarkBufferStorage {
-    // Used for resetting.
-    public func wipeBookmarks() -> Success {
-        return self.db.run("DELETE FROM \(TableBookmarksBuffer)")
-           >>> { self.db.run("DELETE FROM \(TableBookmarksBufferStructure)") }
-    }
-}
-
 public class MergedSQLiteBookmarks {
     let local: SQLiteBookmarks
     let buffer: SQLiteBookmarkBufferStorage
@@ -888,24 +880,41 @@ extension MergedSQLiteBookmarks: BookmarksModelFactory {
 
 extension MergedSQLiteBookmarks: AccountRemovalDelegate {
     public func onRemovedAccount() -> Success {
-        return self.resetClient()
+        return self.local.onRemovedAccount() >>> self.buffer.onRemovedAccount
     }
 }
 
 extension MergedSQLiteBookmarks: ResettableSyncStorage {
+    public func resetClient() -> Success {
+        return self.local.resetClient() >>> self.buffer.resetClient
+    }
+}
+
+extension SQLiteBookmarkBufferStorage: AccountRemovalDelegate {
+    public func onRemovedAccount() -> Success {
+        return self.resetClient()
+    }
+}
+
+extension SQLiteBookmarkBufferStorage: ResettableSyncStorage {
     /**
      * Our buffer is simply a copy of server contents. That means we should
      * be very willing to drop it and re-populate it from the server whenever we might
      * be out of sync. See Bug 1212431 Comment 2.
      */
     public func resetClient() -> Success {
-        return self.buffer.wipeBookmarks()
+        return self.wipeBookmarks()
+    }
+
+    public func wipeBookmarks() -> Success {
+        return self.db.run("DELETE FROM \(TableBookmarksBuffer)")
+         >>> { self.db.run("DELETE FROM \(TableBookmarksBufferStructure)") }
     }
 }
 
 extension SQLiteBookmarks: AccountRemovalDelegate {
     public func onRemovedAccount() -> Success {
-        // TODO
+        // TODO: copy the mirror into local storage.
         log.debug("SQLiteBookmarks doesn't yet store any data that needs to be discarded on account removal.")
         return succeed()
     }
@@ -913,7 +922,7 @@ extension SQLiteBookmarks: AccountRemovalDelegate {
 
 extension SQLiteBookmarks: ResettableSyncStorage {
     public func resetClient() -> Success {
-        // TODO
+        // TODO: flip flags to prompt a re-sync.
         log.debug("SQLiteBookmarks doesn't yet store any data that needs to be reset.")
         return succeed()
     }
