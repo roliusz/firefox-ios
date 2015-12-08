@@ -294,7 +294,7 @@ public class SQLiteBookmarks: BookmarksModelFactory {
 
 extension SQLiteBookmarks {
     // Sorry about the long line. If we break it, the indenting below gets crazy.
-    private func insertBookmarkInTransaction(onFailure fail: NSError? -> (), url: NSURL, title: String, favicon: Favicon?, intoFolder parent: GUID, withTitle parentTitle: String)(conn: SQLiteDBConnection, inout err: NSError?) -> Bool {
+    private func insertBookmarkInTransaction(deferred: Success, url: NSURL, title: String, favicon: Favicon?, intoFolder parent: GUID, withTitle parentTitle: String)(conn: SQLiteDBConnection, inout err: NSError?) -> Bool {
 
         log.debug("Begun bookmark transaction on thread \(NSThread.currentThread())")
 
@@ -304,6 +304,10 @@ extension SQLiteBookmarks {
 
         func boolFactory(col: String) -> SDRow -> Bool {
             return { 0 != ($0[col] as! Int) }
+        }
+
+        func fail(err: NSError?) {
+            deferred.fillIfUnfilled(Maybe(failure: DatabaseError(err: err)))
         }
 
         // Keep going if this returns true.
@@ -386,6 +390,7 @@ extension SQLiteBookmarks {
             let localStatusSQL = "SELECT sync_status FROM \(TableBookmarksLocal) WHERE guid = ?"
             guard let status = conn.executeQuery(localStatusSQL, factory: intFactory("sync_status"), withArgs: parentArgs)[0] else {
                 log.error("Inserting into non-existent local folder \(parent). Aborting.")
+                deferred.fillIfUnfilled(Maybe(failure: DatabaseError(description: "Local folder \(parent) doesn't exist.")))
                 return false
             }
             let syncStatus = SyncStatus(rawValue: status)
@@ -453,7 +458,12 @@ extension SQLiteBookmarks {
         let structureArgs: Args = [parent, newGUID, parent]
 
         log.debug("Wrapping up bookmark transaction on thread \(NSThread.currentThread())")
-        return change(structureSQL, args: structureArgs, desc: "Error adding new item \(newGUID) to local structure.")
+        if !change(structureSQL, args: structureArgs, desc: "Error adding new item \(newGUID) to local structure.") {
+            return false
+        }
+
+        deferred.fill(Maybe(success: ()))
+        return true
     }
 
     /**
@@ -463,12 +473,8 @@ extension SQLiteBookmarks {
         log.debug("Inserting bookmark task on thread \(NSThread.currentThread())")
         let deferred = Success()
 
-        func fail(err: NSError?) {
-            deferred.fillIfUnfilled(Maybe(failure: DatabaseError(err: err)))
-        }
-
         var error: NSError?
-        let inTransaction = self.insertBookmarkInTransaction(onFailure: fail, url: url, title: title, favicon: favicon, intoFolder: parent, withTitle: parentTitle)
+        let inTransaction = self.insertBookmarkInTransaction(deferred, url: url, title: title, favicon: favicon, intoFolder: parent, withTitle: parentTitle)
         error = self.db.transaction(synchronous: false, err: &error, callback: inTransaction)
 
         log.debug("Returning deferred on thread \(NSThread.currentThread())")
