@@ -727,31 +727,8 @@ extension SQLiteBookmarks {
     private func getDesktopRoots() -> Deferred<Maybe<Cursor<BookmarkNode>>> {
         // We deliberately exclude the mobile folder, because we're inverting the containment
         // relationship here.
-        let args: Args = [BookmarkRoots.RootGUID, BookmarkRoots.MobileFolderGUID]
-        let folderType = BookmarkNodeType.Folder.rawValue
-        let sql =
-        "SELECT id, guid, type, title FROM \(TableBookmarksMirror) WHERE " +
-        "parentid = ? AND " +
-        "is_deleted = 0 AND " +
-        "type = \(folderType) AND " +
-        "guid IS NOT ? AND " +
-        "title IS NOT '' " +
-        "ORDER BY guid ASC"
-        return self.db.runQuery(sql, args: args, factory: BookmarkFactory.factory)
-    }
-
-    private func cursorForGUID(guid: GUID) -> Deferred<Maybe<Cursor<BookmarkNode>>> {
-        let args: Args = [guid]
-        let sql =
-        "SELECT m.id AS id, m.guid AS guid, m.type AS type, m.bmkUri AS bmkUri, m.title AS title, " +
-        "s.idx AS idx FROM " +
-        "\(TableBookmarksMirror) AS m JOIN \(TableBookmarksMirrorStructure) AS s " +
-        "ON s.child = m.guid " +
-        "WHERE s.parent = ? AND " +
-        "m.is_deleted = 0 AND " +
-        "m.type <= 2 " +                // Bookmark or folder.
-        "ORDER BY idx ASC"
-        return self.db.runQuery(sql, args: args, factory: BookmarkFactory.factory)
+        let exclude = [BookmarkRoots.MobileFolderGUID, BookmarkRoots.RootGUID]
+        return self.getChildrenWithParent(BookmarkRoots.RootGUID, excludingGUIDs: exclude, includeIcon: false)
     }
 
     /**
