@@ -149,7 +149,7 @@ public class SQLiteBookmarks: BookmarksModelFactory {
      * This method is aware of is_overridden and deletion, using local override structure by preference.
      * Note that a folder can be empty locally; we thus use the flag rather than looking at the structure itself.
      */
-    private func getChildrenWithParent(parentGUID: GUID, excludingGUID: GUID?=nil, includeIcon: Bool) -> Deferred<Maybe<Cursor<BookmarkNode>>> {
+    private func getChildrenWithParent(parentGUID: GUID, excludingGUIDs: [GUID]?=nil, includeIcon: Bool) -> Deferred<Maybe<Cursor<BookmarkNode>>> {
         let childrenOfLocallyOverridden =
         "SELECT parent, child AS guid, idx FROM \(TableBookmarksLocalStructure) WHERE parent = ?"
 
@@ -175,9 +175,9 @@ public class SQLiteBookmarks: BookmarksModelFactory {
 
         let args: Args
         let exclusion: String
-        if let excludingGUID = excludingGUID {
-            args = [parentGUID, parentGUID, parentGUID, excludingGUID]
-            exclusion = "WHERE guid IS NOT ? "
+        if let excludingGUIDs = excludingGUIDs {
+            args = ([parentGUID, parentGUID, parentGUID] + excludingGUIDs).map { $0 as AnyObject }
+            exclusion = "WHERE vals.guid NOT IN " + BrowserDB.varlist(excludingGUIDs.count)
         } else {
             args = [parentGUID, parentGUID, parentGUID]
             exclusion = ""
@@ -210,7 +210,7 @@ public class SQLiteBookmarks: BookmarksModelFactory {
     }
 
     private func getRootChildren() -> Deferred<Maybe<Cursor<BookmarkNode>>> {
-        return self.getChildrenWithParent(BookmarkRoots.RootGUID, excludingGUID: BookmarkRoots.RootGUID, includeIcon: true)
+        return self.getChildrenWithParent(BookmarkRoots.RootGUID, excludingGUIDs: [BookmarkRoots.RootGUID], includeIcon: true)
     }
 
     private func getChildren(guid: String) -> Deferred<Maybe<Cursor<BookmarkNode>>> {
