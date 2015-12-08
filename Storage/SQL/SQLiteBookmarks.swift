@@ -170,7 +170,7 @@ public class SQLiteBookmarks: BookmarksModelFactory {
         "FROM \(TableBookmarksMirror) WHERE is_overridden IS NOT 1 " +
         "UNION ALL " +
         "SELECT -1 AS id, guid, type, is_deleted, parentid, parentName, feedUri, pos, title, bmkUri, folderName, faviconID " +
-        "FROM \(TableBookmarksLocal)"
+        "FROM \(TableBookmarksLocal) WHERE is_deleted IS NOT 1"
 
 
         let args: Args
@@ -280,9 +280,11 @@ public class SQLiteBookmarks: BookmarksModelFactory {
 
     public func isBookmarked(url: String) -> Deferred<Maybe<Bool>> {
         let sql = "SELECT id FROM " +
-            "(SELECT id FROM \(TableBookmarksLocal) WHERE bmkUri = ? AND is_deleted IS NOT 1" +
+            "(SELECT id FROM \(TableBookmarksLocal) WHERE " +
+            " bmkUri = ? AND is_deleted IS NOT 1" +
             " UNION ALL " +
-            " SELECT id FROM \(TableBookmarksMirror) WHERE bmkUri = ? AND is_deleted IS NOT 1" +
+            " SELECT id FROM \(TableBookmarksMirror) WHERE " +
+            " bmkUri = ? AND is_deleted IS NOT 1 AND is_overridden IS NOT 1" +
             " LIMIT 1)"
         let args: Args = [url, url]
 
