@@ -808,11 +808,6 @@ extension SQLiteBookmarks {
     private func folderForDesktopBookmarksCursor(cursor: Cursor<BookmarkNode>) -> SQLiteBookmarkFolder {
         return SQLiteBookmarkFolder(guid: BookmarkRoots.FakeDesktopFolderGUID, title: desktopBookmarksLabel, children: cursor)
     }
-
-    private func modelForCursor(guid: GUID, title: String)(cursor: Cursor<BookmarkNode>) -> Deferred<Maybe<BookmarksModel>> {
-        let folder = SQLiteBookmarkFolder(guid: guid, title: title, children: cursor)
-        return deferMaybe(BookmarksModel(modelFactory: self, root: folder))
-    }
 }
 
 extension SQLiteBookmarkBufferStorage {
