@@ -51,14 +51,14 @@ class BookmarksPanel: SiteTableViewController, HomePanel {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        // if we've not already set a source for this panel fetch a new model
-        // otherwise just use the existing source to select a folder
+        // If we've not already set a source for this panel fetch a new model pointed at the root.
+        // otherwise just use the existing source to select a folder.
         guard let source = self.source else {
             // Get all the bookmarks split by folders
             if let bookmarkFolder = bookmarkFolder {
                 profile.bookmarks.modelForFolder(bookmarkFolder).upon(onModelFetched)
             } else {
-                profile.bookmarks.modelForFolder(BookmarkRoots.MobileFolderGUID).upon(onModelFetched)
+                profile.bookmarks.modelForRoot().upon(onModelFetched)
             }
             return
         }
