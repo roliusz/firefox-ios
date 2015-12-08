@@ -159,7 +159,7 @@ public class BrowserTable: Table {
             BookmarkRoots.RootGUID, BookmarkRoots.UnfiledFolderGUID, 3,
         ]
 
-        // Note that we specify no title and no parentName for these records. We should
+        // Note that we specify an empty title and parentName for these records. We should
         // never need a parentName -- we don't use content-based reconciling or
         // reparent these -- and we'll use the current locale's string, retrieved
         // via titleForSpecialGUID, if necessary.
@@ -167,11 +167,11 @@ public class BrowserTable: Table {
         let local =
         "INSERT INTO \(TableBookmarksLocal) " +
         "(id, guid, type, parentid, title, parentName) VALUES" +
-        "  (?, ?, ?, ?, NULL, NULL)" +    // Root
-        ", (?, ?, ?, ?, NULL, NULL)" +    // Mobile
-        ", (?, ?, ?, ?, NULL, NULL)" +    // Menu
-        ", (?, ?, ?, ?, NULL, NULL)" +    // Toolbar
-        ", (?, ?, ?, ?, NULL, NULL)"      // Unsorted
+        "  (?, ?, ?, ?, '', '')" +    // Root
+        ", (?, ?, ?, ?, '', '')" +    // Mobile
+        ", (?, ?, ?, ?, '', '')" +    // Menu
+        ", (?, ?, ?, ?, '', '')" +    // Toolbar
+        ", (?, ?, ?, ?, '', '')"      // Unsorted
 
         let structure =
         "INSERT INTO \(TableBookmarksLocalStructure) (parent, child, idx) VALUES" +
@@ -532,7 +532,7 @@ public class BrowserTable: Table {
             "INSERT INTO \(TableBookmarksLocal) " +
             "(guid, type, bmkUri, title, faviconID, local_modified, sync_status, parentid, parentName) " +
             "SELECT guid, type, url AS bmkUri, title, faviconID, " +
-            "\(modified) AS local_modified, \(status) AS sync_status, ?, NULL " +
+            "\(modified) AS local_modified, \(status) AS sync_status, ?, '' " +
             "FROM \(_TableBookmarks) WHERE type IS \(BookmarkNodeType.Bookmark.rawValue)"
 
             // Create structure for our migrated bookmarks.
