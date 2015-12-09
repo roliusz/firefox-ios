@@ -914,9 +914,62 @@ extension SQLiteBookmarkBufferStorage: ResettableSyncStorage {
 
 extension SQLiteBookmarks: AccountRemovalDelegate {
     public func onRemovedAccount() -> Success {
-        // TODO: copy the mirror into local storage.
-        log.debug("SQLiteBookmarks doesn't yet store any data that needs to be discarded on account removal.")
-        return succeed()
+        // As implemented, this won't work correctly without ON DELETE CASCADE.
+        assert(SwiftData.EnableForeignKeys)
+
+        // 1. Drop anything from the mirror that's overridden. It's already in
+        //    local, deleted or not.
+        //    The REFERENCES clause will drop old structure, too.
+        let removeOverridden =
+        "DELETE FROM \(TableBookmarksMirror) WHERE is_overridden IS 1"
+
+        // 2. Drop anything from local that's deleted. We don't need to track
+        //    the deletion now. (Optional: keep them around.)
+        let removeLocalDeletions =
+        "DELETE FROM \(TableBookmarksLocal) WHERE is_deleted IS 1"
+
+        // 3. Mark everything in local as New.
+        let markLocalAsNew =
+        "UPDATE \(TableBookmarksLocal) SET sync_status = \(SyncStatus.New.rawValue)"
+
+        // 4. Insert into local anything left in mirror.
+        //    Note that we use the server modified time as our substitute local modified time.
+        //    This will provide an ounce of conflict avoidance if the user re-links the same
+        //    account at a later date.
+        let copyMirrorContents =
+        "INSERT INTO \(TableBookmarksLocal) " +
+        "(sync_status, local_modified, " +
+        " guid, type, bmkUri, title, parentid, parentName, feedUri, siteUri, pos," +
+        " description, tags, keyword, folderName, queryId, faviconID) " +
+        "SELECT " +
+        "\(SyncStatus.New.rawValue) AS sync_status, " +
+        "server_modified AS local_modified, " +
+        "guid, type, bmkUri, title, parentid, parentName, " +
+        "feedUri, siteUri, pos, description, tags, keyword, folderName, queryId, faviconID " +
+        "FROM \(TableBookmarksMirror)"
+
+        // 5. Insert into localStructure anything left in mirrorStructure.
+        //    This won't copy the structure of any folders that were already overridden --
+        //    we already deleted those, and the deletions cascaded.
+        let copyMirrorStructure =
+        "INSERT INTO \(TableBookmarksLocalStructure) SELECT * FROM \(TableBookmarksMirrorStructure)"
+
+        // 6. Blank the mirror.
+        let removeMirrorStructure =
+        "DELETE FROM \(TableBookmarksMirrorStructure)"
+
+        let removeMirrorContents =
+        "DELETE FROM \(TableBookmarksMirror)"
+
+        return db.run([
+            removeOverridden,
+            removeLocalDeletions,
+            markLocalAsNew,
+            copyMirrorContents,
+            copyMirrorStructure,
+            removeMirrorStructure,
+            removeMirrorContents,
+        ])
     }
 }
 
