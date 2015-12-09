@@ -975,7 +975,18 @@ extension SQLiteBookmarks: AccountRemovalDelegate {
 
 extension SQLiteBookmarks: ResettableSyncStorage {
     public func resetClient() -> Success {
-        // TODO: flip flags to prompt a re-sync.
+        // Flip flags to prompt a re-sync.
+        //
+        // That just means marking everything as Changed so that it's
+        // reuploaded. Records that are Changed but match the server record that
+        // we'll redownload will be marked as Synced and won't be reuploaded.
+        //
+        // We keep the existing mirror records.
+        //
+        // TODO: actually, what do we expect to happen here? That mirror records
+        // are reuploaded if they don't exist on the server? If so, we need to
+        // touch the mirror.
+        // What do we do in passwords?
         log.debug("SQLiteBookmarks doesn't yet store any data that needs to be reset.")
         return succeed()
     }
